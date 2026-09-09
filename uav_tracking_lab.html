@@ -1,0 +1,1359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UAV & Satellite FSOC Coarse Alignment — Clohessy-Wiltshire Virtual Tracking Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #070a11;
+    --bg-grad: #0b1120;
+    --panel: #0d1420;
+    --panel-2: #0a0f1a;
+    --border: #1b2636;
+    --border-soft: #141d2b;
+    --text: #e7edf6;
+    --text-dim: #8592a8;
+    --text-faint: #4d5870;
+    --cyan: #4fd8ff;
+    --cyan-dim: #1c5f75;
+    --amber: #f2a93b;
+    --green: #34e0a1;
+    --red: #ff5c7a;
+    --yellow: #f4c430;
+    --purple: #b388ff;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background:
+      radial-gradient(1200px 600px at 15% -10%, rgba(79, 216, 255, 0.08), transparent 60%),
+      radial-gradient(900px 500px at 100% 0%, rgba(244, 196, 48, 0.05), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    min-height: 100vh;
+    padding: 24px 24px 48px;
+  }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+
+  /* ---------- Header ---------- */
+  header {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    margin-bottom: 20px; flex-wrap: wrap; gap: 14px;
+    border-bottom: 1px solid var(--border-soft); padding-bottom: 16px;
+  }
+  .eyebrow {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em;
+    color: var(--cyan); text-transform: uppercase; margin-bottom: 6px; opacity: 0.9;
+  }
+  h1 { font-size: clamp(22px, 3.2vw, 32px); font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+  .sub { color: var(--text-dim); font-size: 13.5px; margin-top: 6px; max-width: 72ch; line-height: 1.5; }
+  .status-pill {
+    display: flex; align-items: center; gap: 8px; font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.1em; color: var(--text-dim); text-transform: uppercase;
+    border: 1px solid var(--border); padding: 7px 14px; border-radius: 999px;
+    background: rgba(255, 255, 255, 0.02);
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); flex: none; }
+  .dot.live { background: var(--cyan); box-shadow: 0 0 0 0 rgba(79, 216, 255, 0.6); animation: pulse 1.6s infinite; }
+  .dot.paused { background: var(--amber); }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(79, 216, 255, 0.55); }
+    70% { box-shadow: 0 0 0 8px rgba(79, 216, 255, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(79, 216, 255, 0); }
+  }
+
+  /* ---------- Panels Layout ---------- */
+  .panels {
+    display: grid; grid-template-columns: 1.15fr 1fr; gap: 16px; align-items: stretch;
+  }
+  @media (max-width: 960px) { .panels { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: linear-gradient(180deg, var(--panel), var(--panel-2));
+    border: 1px solid var(--border); border-radius: var(--radius);
+    overflow: hidden; display: flex; flex-direction: column; position: relative;
+  }
+  .panel-head {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 14px 18px 12px; border-bottom: 1px solid var(--border-soft);
+    gap: 10px; flex-wrap: wrap;
+  }
+  .panel-eyebrow {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em;
+    color: var(--cyan-dim); text-transform: uppercase; margin-bottom: 4px;
+  }
+  .panel-title { font-size: 15px; font-weight: 600; }
+  .panel-hint { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--text-faint); text-align: right; }
+
+  .cw-case-badge {
+    position: absolute; top: 56px; left: 16px; z-index: 10;
+    font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em;
+    padding: 5px 12px; border-radius: 6px; border: 1px solid var(--cyan-dim);
+    background: rgba(13, 20, 32, 0.85); backdrop-filter: blur(6px); color: var(--cyan);
+  }
+
+  .badge {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.08em;
+    padding: 5px 12px; border-radius: 999px; border: 1px solid currentColor; text-transform: uppercase;
+    flex: none; font-weight: 600;
+  }
+  .badge.acquiring { color: var(--amber); border-color: rgba(242,169,59,0.4); background: rgba(242,169,59,0.08); }
+  .badge.tracking { color: var(--green); border-color: rgba(52,224,161,0.4); background: rgba(52,224,161,0.08); }
+  .badge.lost { color: var(--red); border-color: rgba(255,92,122,0.4); background: rgba(255,92,122,0.08); }
+
+  .canvas-wrap { position: relative; width: 100%; aspect-ratio: 4/3; min-height: 280px; background: #02040a; }
+  #obs3d { width: 100%; height: 100%; display: block; cursor: grab; }
+  #obs3d:active { cursor: grabbing; }
+  #trackCanvas { width: 100%; height: 100%; display: block; }
+
+  .legend {
+    display: flex; gap: 16px; padding: 10px 16px; border-top: 1px solid var(--border-soft);
+    font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--text-dim); flex-wrap: wrap;
+    background: rgba(0,0,0,0.2);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+  /* ---------- Controls Box ---------- */
+  .controls {
+    margin-top: 16px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 18px 20px;
+  }
+  .controls-header {
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 14px; margin-bottom: 14px;
+  }
+  .toggle-group { display: flex; gap: 6px; flex-wrap: wrap; }
+  .opt-btn {
+    font-family: 'JetBrains Mono', monospace; font-size: 11.5px; letter-spacing: 0.02em;
+    background: transparent; color: var(--text-dim); border: 1px solid var(--border);
+    padding: 7px 12px; border-radius: 6px; cursor: pointer; transition: all .15s ease;
+  }
+  .opt-btn:hover { border-color: var(--cyan-dim); color: var(--text); }
+  .opt-btn.active { color: #04222c; background: var(--cyan); border-color: var(--cyan); font-weight: 600; }
+
+  .action-btns { display: flex; gap: 8px; }
+  .btn {
+    font-family: 'Space Grotesk', sans-serif; font-size: 12.5px; font-weight: 600;
+    padding: 8px 16px; border-radius: 6px; cursor: pointer; border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.03); color: var(--text); transition: all .15s ease;
+  }
+  .btn:hover { border-color: var(--cyan-dim); }
+  .btn.primary { background: var(--cyan); color: #04222c; border-color: var(--cyan); }
+  .btn.primary:hover { filter: brightness(1.1); }
+  .btn.ghost { color: var(--text-dim); }
+  .btn.ghost:hover { color: var(--text); }
+
+  .info-desc {
+    font-size: 12.5px; color: var(--text-dim); margin-bottom: 16px; line-height: 1.5;
+    padding: 10px 14px; background: rgba(0,0,0,0.25); border-radius: 6px; border-left: 3px solid var(--cyan);
+  }
+
+  .section-title {
+    font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.12em;
+    color: var(--cyan); text-transform: uppercase; margin: 16px 0 10px; opacity: 0.85;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .sliders-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px 20px;
+  }
+  .slider-group label {
+    display: flex; justify-content: space-between; font-size: 12px; color: var(--text-dim); margin-bottom: 6px;
+  }
+  .slider-group label b { color: var(--text); font-weight: 600; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; }
+  input[type=range] {
+    -webkit-appearance: none; width: 100%; height: 4px; border-radius: 2px;
+    background: var(--border); outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%;
+    background: var(--cyan); cursor: pointer; border: 2px solid #04222c; box-shadow: 0 0 0 1px var(--cyan);
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 14px; height: 14px; border-radius: 50%; background: var(--cyan); cursor: pointer; border: 2px solid #04222c;
+  }
+
+  /* ---------- Expandable Educational & Diagnostic Panels ---------- */
+  .accordion-box {
+    margin-top: 16px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden;
+  }
+  .accordion-head {
+    padding: 14px 18px; cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600; color: var(--cyan);
+    background: rgba(255,255,255,0.015); border-bottom: 1px solid transparent; transition: all .15s ease;
+  }
+  .accordion-head:hover { background: rgba(79, 216, 255, 0.04); }
+  .accordion-box.open .accordion-head { border-bottom-color: var(--border-soft); }
+  .accordion-body { padding: 16px 18px; display: none; font-size: 13px; line-height: 1.6; color: var(--text-dim); }
+  .accordion-box.open .accordion-body { display: block; }
+  
+  .math-formula {
+    background: #04060d; padding: 12px 16px; border-radius: 6px; border: 1px solid var(--border-soft);
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--green); margin: 10px 0; overflow-x: auto;
+  }
+  .diag-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 10px;
+  }
+  .diag-card {
+    background: #04060d; border: 1px solid var(--border-soft); padding: 8px 12px; border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  }
+  .diag-card span { color: var(--text-faint); display: block; font-size: 9.5px; text-transform: uppercase; }
+  .diag-card b { color: var(--cyan); font-size: 13px; margin-top: 2px; display: block; }
+
+  /* ---------- Statistics Grid ---------- */
+  .stats {
+    margin-top: 16px; display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px;
+  }
+  @media (max-width: 920px) { .stats { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 540px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+  .stat-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 12px 14px 10px;
+  }
+  .stat-label { font-family: 'JetBrains Mono', monospace; font-size: 9.5px; letter-spacing: 0.1em; color: var(--text-faint); text-transform: uppercase; }
+  .stat-value { font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 600; margin-top: 4px; color: var(--text); }
+  .stat-value.accent { color: var(--cyan); }
+  .stat-value.green { color: var(--green); }
+
+  footer {
+    margin-top: 24px; text-align: center; color: var(--text-faint); font-size: 11px;
+    font-family: 'JetBrains Mono', monospace; line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <header>
+    <div>
+      <div class="eyebrow">SIH 2026 · ISRO OPTICAL TRACKING MODULE · CLOHESSY-WILTSHIRE RELATIVE MOTION</div>
+      <h1>AI Virtual Camera Tracking Lab</h1>
+      <div class="sub">Coarse-alignment testbed for mobile Free Space Optical Communication (FSOC) terminals. Analytical Clohessy-Wiltshire relative orbit dynamics, synthetic detector feed, optical noise injection & Kalman tracking.</div>
+    </div>
+    <div class="status-pill"><span class="dot" id="statusDot"></span><span id="statusText">STANDBY</span></div>
+  </header>
+
+  <div class="panels">
+    <!-- 3D Observer View -->
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <div class="panel-eyebrow">Observer View (LVLH Frame)</div>
+          <div class="panel-title" id="obsTitle">Relative 3D Orbital Trajectory</div>
+        </div>
+        <div class="panel-hint">Drag to orbit · Scroll to zoom<br>Right-drag to pan</div>
+      </div>
+      <div class="cw-case-badge" id="cwBadge">CW CASE: BOUNDED ELLIPSE</div>
+      <div class="canvas-wrap"><canvas id="obs3d"></canvas></div>
+      <div class="legend">
+        <span><span class="swatch" style="background:var(--cyan)"></span>Chief/Observer Spacecraft</span>
+        <span><span class="swatch" style="background:var(--red)"></span>Deputy/Target Terminal</span>
+        <span><span class="swatch" style="background:var(--yellow)"></span>CW Relative Orbit Path</span>
+        <span><span class="swatch" style="background:var(--amber)"></span>Initial State [x₀,y₀,z₀]</span>
+        <span><span class="swatch" style="background:var(--green)"></span>Camera Boresight Vector</span>
+      </div>
+    </section>
+
+    <!-- Synthetic Tracking Camera View -->
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <div class="panel-eyebrow">Tracking Camera</div>
+          <div class="panel-title">Synthetic Detector Feed</div>
+        </div>
+        <div class="badge acquiring" id="lockBadge">ACQUIRING</div>
+      </div>
+      <div class="canvas-wrap"><canvas id="trackCanvas" width="640" height="480"></canvas></div>
+      <div class="legend">
+        <span><span class="swatch" style="background:var(--green)"></span>Centroid Measurement</span>
+        <span><span class="swatch" style="background:var(--yellow)"></span>Kalman Estimate</span>
+        <span><span class="swatch" style="background:var(--red)"></span>Optical Axis Boresight</span>
+      </div>
+    </section>
+  </div>
+
+  <!-- Interactive Controls Panel -->
+  <div class="controls">
+    <div class="controls-header">
+      <div class="toggle-group" id="scenarioGroup">
+        <button class="opt-btn active" data-scenario="uav-uav">UAV → UAV (Relative Orbit)</button>
+        <button class="opt-btn" data-scenario="uav-ground">UAV → Ground (Fixed Ref)</button>
+      </div>
+      <div class="action-btns">
+        <button class="btn primary" id="runBtn">Start Simulation</button>
+        <button class="btn ghost" id="resetBtn">Reset</button>
+        <button class="btn ghost" id="logBtn">Export Performance Log (CSV)</button>
+      </div>
+    </div>
+
+    <!-- Clohessy-Wiltshire Case Selector -->
+    <div class="section-title">Select Clohessy-Wiltshire (Hill) Trajectory Case</div>
+    <div class="toggle-group" id="cwCaseGroup">
+      <button class="opt-btn active" data-cwcase="case1">1. Bounded Natural Ellipse</button>
+      <button class="opt-btn" data-cwcase="case2">2. In-Plane Elliptical</button>
+      <button class="opt-btn" data-cwcase="case3">3. Along-Track Drift</button>
+      <button class="opt-btn" data-cwcase="case4">4. Cross-Track Oscillation</button>
+      <button class="opt-btn" data-cwcase="case5">5. General 3D Relative Orbit</button>
+      <button class="opt-btn" data-cwcase="custom">Custom Initial State</button>
+    </div>
+
+    <div class="info-desc" id="cwCaseDesc" style="margin-top:12px;">
+      <b>Case 1 — Bounded / Natural Relative Motion:</b> Initial conditions satisfy <code>vy₀ = -2 n x₀</code>. Eliminates along-track secular drift, resulting in a closed 2:1 relative ellipse in the radial/along-track LVLH plane.
+    </div>
+
+    <!-- Clohessy-Wiltshire Orbital Parameters & Initial State Sliders -->
+    <div class="section-title">
+      <span>Orbital Initial Conditions & Mean Motion Parameters</span>
+      <span style="color:var(--text-dim); font-size:10px;" id="periodReadout">T = 5560s (92.7 min)</span>
+    </div>
+    <div class="sliders-grid">
+      <div class="slider-group">
+        <label>Mean Motion (n) <b id="vN">0.00113 rad/s</b></label>
+        <input type="range" id="sN" min="0.0002" max="0.0050" step="0.0001" value="0.00113">
+      </div>
+      <div class="slider-group">
+        <label>Time Scale (Sim Speed) <b id="vSimSpeed">15x</b></label>
+        <input type="range" id="sSimSpeed" min="1" max="100" value="15">
+      </div>
+      <div class="slider-group">
+        <label>Initial Radial (x₀) <b id="vX0">10.0 m</b></label>
+        <input type="range" id="sX0" min="-50" max="50" step="0.5" value="10.0">
+      </div>
+      <div class="slider-group">
+        <label>Initial Along-Track (y₀) <b id="vY0">0.0 m</b></label>
+        <input type="range" id="sY0" min="-100" max="100" step="1.0" value="0.0">
+      </div>
+      <div class="slider-group">
+        <label>Initial Cross-Track (z₀) <b id="vZ0">0.0 m</b></label>
+        <input type="range" id="sZ0" min="-50" max="50" step="0.5" value="0.0">
+      </div>
+      <div class="slider-group">
+        <label>Initial Radial Vel (vx₀) <b id="vVx0">0.000 m/s</b></label>
+        <input type="range" id="sVx0" min="-0.2" max="0.2" step="0.005" value="0.000">
+      </div>
+      <div class="slider-group">
+        <label>Initial Along-Track Vel (vy₀) <b id="vVy0">-0.023 m/s</b></label>
+        <input type="range" id="sVy0" min="-0.2" max="0.2" step="0.005" value="-0.0226">
+      </div>
+      <div class="slider-group">
+        <label>Initial Cross-Track Vel (vz₀) <b id="vVz0">0.000 m/s</b></label>
+        <input type="range" id="sVz0" min="-0.2" max="0.2" step="0.005" value="0.000">
+      </div>
+    </div>
+
+    <!-- Physical & Optical Environmental Disturbances -->
+    <div class="section-title">Environmental Disturbances & Optical Sensor Noise (Layered on top of CW Orbit)</div>
+    <div class="sliders-grid">
+      <div class="slider-group">
+        <label>Wind Speed Gusts <b id="vWind">25 m/s</b></label>
+        <input type="range" id="sWind" min="0" max="100" value="25">
+      </div>
+      <div class="slider-group">
+        <label>Platform Vibration Jitter <b id="vVib">20 mrad</b></label>
+        <input type="range" id="sVib" min="0" max="100" value="20">
+      </div>
+      <div class="slider-group">
+        <label>Atmospheric Turbulence ($r_0$) <b id="vTurb">20%</b></label>
+        <input type="range" id="sTurb" min="0" max="100" value="20">
+      </div>
+      <div class="slider-group">
+        <label>Cloud / Fog Opacity <b id="vCloud">10%</b></label>
+        <input type="range" id="sCloud" min="0" max="100" value="10">
+      </div>
+      <div class="slider-group">
+        <label>LOS Obstruction Prob. <b id="vObs">10%</b></label>
+        <input type="range" id="sObs" min="0" max="100" value="10">
+      </div>
+      <div class="slider-group">
+        <label>Sunlight Glare <b id="vSun">15%</b></label>
+        <input type="range" id="sSun" min="0" max="100" value="15">
+      </div>
+      <div class="slider-group">
+        <label>Sensor Shot / Read Noise <b id="vNoise">20%</b></label>
+        <input type="range" id="sNoise" min="0" max="100" value="20">
+      </div>
+      <div class="slider-group">
+        <label>Dark Current & Hot Pixels <b id="vDark">15%</b></label>
+        <input type="range" id="sDark" min="0" max="100" value="15">
+      </div>
+    </div>
+  </div>
+
+  <!-- Real-time Trajectory Diagnostics Panel -->
+  <div class="accordion-box open" id="diagAccordion">
+    <div class="accordion-head" onclick="toggleAccordion('diagAccordion')">
+      <span>📊 Real-Time Clohessy-Wiltshire Trajectory Diagnostics</span>
+      <span class="toggle-icon">▼</span>
+    </div>
+    <div class="accordion-body">
+      <div class="diag-grid">
+        <div class="diag-card"><span>Active CW Case</span><b id="dCase">Bounded Ellipse</b></div>
+        <div class="diag-card"><span>Bounded Condition (vy₀ = -2nx₀)</span><b id="dBounded" style="color:var(--green)">Satisfied</b></div>
+        <div class="diag-card"><span>Relative Pos (x, y, z)</span><b id="dPos">x: 10.0m, y: 0.0m, z: 0.0m</b></div>
+        <div class="diag-card"><span>Relative Vel (vx, vy, vz)</span><b id="dVel">vx: 0.00, vy: -0.02, vz: 0.00</b></div>
+        <div class="diag-card"><span>Slant Range (R)</span><b id="dRange">10.00 m</b></div>
+        <div class="diag-card"><span>Orbital Phase (nt mod 2π)</span><b id="dPhase">0.0° (0.00 rad)</b></div>
+        <div class="diag-card"><span>Mean Motion (n)</span><b id="dMeanMotion">0.001130 rad/s</b></div>
+        <div class="diag-card"><span>Orbital Period (T)</span><b id="dPeriod">5560 s (92.7 min)</b></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Educational Clohessy-Wiltshire Information Panel -->
+  <div class="accordion-box" id="eduAccordion">
+    <div class="accordion-head" onclick="toggleAccordion('eduAccordion')">
+      <span>📖 Educational Theory — Clohessy-Wiltshire (Hill) Equations</span>
+      <span class="toggle-icon">▶</span>
+    </div>
+    <div class="accordion-body">
+      <div>The <b>Clohessy-Wiltshire (CW)</b> or <b>Hill equations</b> describe the relative linearized motion of a deputy spacecraft with respect to a chief spacecraft in a circular orbit using the Local-Vertical Local-Horizontal (LVLH) coordinate frame:</div>
+      <div class="math-formula">
+        ẍ - 2n ẏ - 3n²x = 0  (Radial differential equation)<br>
+        ÿ + 2n ẋ = 0          (Along-track differential equation)<br>
+        z̈ + n²z = 0          (Cross-track differential equation)
+      </div>
+      <div><b>Coordinate System Mapping:</b></div>
+      <ul style="margin:6px 0; padding-left:20px;">
+        <li><b>x (Radial):</b> Direction along the vector from Earth center to chief spacecraft.</li>
+        <li><b>y (Along-Track):</b> Direction parallel to chief orbital velocity vector.</li>
+        <li><b>z (Cross-Track):</b> Direction normal to orbital plane.</li>
+        <li><b>n:</b> Mean orbital angular rate $\sqrt{\mu / a^3}$ ($\text{rad/s}$), Period $T = 2\pi / n$.</li>
+      </ul>
+      <div style="margin-top:8px;"><b>Analytical State-Transition Solution:</b></div>
+      <div class="math-formula">
+        x(t) = (4 - 3 cos nt) x₀ + (sin nt / n) vx₀ + (2(1 - cos nt) / n) vy₀<br>
+        y(t) = 6(sin nt - nt) x₀ + y₀ - (2(1 - cos nt) / n) vx₀ + ((4 sin nt - 3nt) / n) vy₀<br>
+        z(t) = cos nt z₀ + (sin nt / n) vz₀
+      </div>
+      <div><b>Zero Drift / Bounded Motion Condition:</b> To eliminate the secular linear drift term $-6n(x₀ + 2vy₀/n)t$ in $y(t)$, the initial velocity must satisfy <code>vy₀ = -2 n x₀</code>.</div>
+    </div>
+  </div>
+
+  <!-- Real-Time Metrics & Statistics -->
+  <div class="stats">
+    <div class="stat-card"><div class="stat-label">FPS</div><div class="stat-value" id="statFps">0</div></div>
+    <div class="stat-card"><div class="stat-label">Sim Time</div><div class="stat-value" id="statTime">0.0s</div></div>
+    <div class="stat-card"><div class="stat-label">Acquisition Time</div><div class="stat-value green" id="statAcq">—</div></div>
+    <div class="stat-card"><div class="stat-label">Tracking Error</div><div class="stat-value accent" id="statErr">—</div></div>
+    <div class="stat-card"><div class="stat-label">Lock Retention</div><div class="stat-value" id="statLock">0%</div></div>
+    <div class="stat-card"><div class="stat-label">Total Frames</div><div class="stat-value" id="statFrames">0</div></div>
+  </div>
+
+  <footer>
+    Coarse Alignment Stage · 640x480 Virtual Detector Field of View (8.6° x 6.5°) · Analytical Clohessy-Wiltshire Propagation · Intensity-Weighted Centroid Detection · 2-Axis Constant-Velocity Kalman Filter · PID Gimbal Control
+  </footer>
+</div>
+
+<!-- Three.js Library -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+(function(){
+"use strict";
+
+/* =========================================================================
+   1. CLOHESSY-WILTSHIRE (HILL) ANALYTICAL MOTION ENGINE
+   ========================================================================= */
+const IMG_W = 640, IMG_H = 480;
+const HALF_FOV_X = 0.075;   // ~4.3 deg half-angle FOV
+const HALF_FOV_Y = HALF_FOV_X * (IMG_H/IMG_W);
+const MAX_SLEW = 1.6;       // rad/s pan-tilt slew limit
+const CTRL_GAIN = 5.5;      // proportional control gain
+const LOCK_HITS_NEEDED = 8;
+const LOST_MISSES_NEEDED = 20;
+const DETECT_THRESHOLD = 85;
+
+function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+function wrapAngle(a) { while(a > Math.PI) a -= 2*Math.PI; while(a < -Math.PI) a += 2*Math.PI; return a; }
+
+/**
+ * Analytical closed-form solution to Clohessy-Wiltshire linearized relative motion equations.
+ * LVLH frame: x = Radial, y = Along-track, z = Cross-track
+ */
+function propagateCW(s0, t, n) {
+  const x0 = s0.x0, y0 = s0.y0, z0 = s0.z0;
+  const vx0 = s0.vx0, vy0 = s0.vy0, vz0 = s0.vz0;
+
+  const nt = n * t;
+  const sin_nt = Math.sin(nt);
+  const cos_nt = Math.cos(nt);
+
+  // Position equations
+  const x = (4 - 3 * cos_nt) * x0 + (sin_nt / n) * vx0 + (2 * (1 - cos_nt) / n) * vy0;
+  const y = 6 * (sin_nt - nt) * x0 + y0 - (2 * (1 - cos_nt) / n) * vx0 + ((4 * sin_nt - 3 * nt) / n) * vy0;
+  const z = cos_nt * z0 + (sin_nt / n) * vz0;
+
+  // Velocity equations (consistent time derivative)
+  const vx = 3 * n * sin_nt * x0 + cos_nt * vx0 + 2 * sin_nt * vy0;
+  const vy = 6 * n * (cos_nt - 1) * x0 - 2 * sin_nt * vx0 + (4 * cos_nt - 3) * vy0;
+  const vz = -n * sin_nt * z0 + cos_nt * vz0;
+
+  return { x, y, z, vx, vy, vz };
+}
+
+/* =========================================================================
+   2. CLOHESSY-WILTSHIRE CASE PRESETS
+   ========================================================================= */
+const cwPresets = {
+  case1: {
+    name: 'Bounded Natural Ellipse',
+    desc: '<b>Case 1 — Bounded / Natural Relative Motion:</b> Initial velocity satisfies <code>vy₀ = -2 n x₀</code>. Eliminates along-track secular drift, producing a closed 2:1 relative ellipse in the LVLH radial/along-track plane.',
+    x0: 10.0, y0: 0.0, z0: 0.0, vx0: 0.0, vz0: 0.0,
+    calcVy0: (n, x0) => -2 * n * x0
+  },
+  case2: {
+    name: 'In-Plane Elliptical Motion',
+    desc: '<b>Case 2 — In-Plane Elliptical Orbit:</b> Spacecraft executes a bounded relative ellipse with radial velocity offset <code>vx₀</code> and along-track center offset <code>y₀</code>.',
+    x0: 15.0, y0: 30.0, z0: 0.0, vx0: 0.04, vz0: 0.0,
+    calcVy0: (n, x0) => -2 * n * x0
+  },
+  case3: {
+    name: 'Along-Track Drift',
+    desc: '<b>Case 3 — Along-Track Drift:</b> Intentionally violates the bounded motion condition (<code>vy₀ ≠ -2 n x₀</code>), producing secular linear drift along the orbital velocity vector.',
+    x0: 10.0, y0: 0.0, z0: 0.0, vx0: 0.0, vz0: 0.0,
+    calcVy0: (n, x0) => -1.2 * n * x0
+  },
+  case4: {
+    name: 'Cross-Track Oscillation',
+    desc: '<b>Case 4 — Cross-Track Oscillation:</b> Pure out-of-plane harmonic oscillation along the z-axis driven by non-zero <code>z₀</code> and <code>vz₀</code>.',
+    x0: 0.0, y0: 0.0, z0: 25.0, vx0: 0.0, vz0: 0.05,
+    calcVy0: (n, x0) => -2 * n * x0
+  },
+  case5: {
+    name: 'General 3D Relative Orbit',
+    desc: '<b>Case 5 — General 3D Relative Motion:</b> Combines bounded in-plane 2:1 elliptical relative motion with out-of-plane cross-track harmonic oscillation.',
+    x0: 12.0, y0: 20.0, z0: 15.0, vx0: 0.03, vz0: 0.04,
+    calcVy0: (n, x0) => -2 * n * x0
+  },
+  custom: {
+    name: 'Custom Initial State',
+    desc: '<b>Custom Mode:</b> Modify initial relative position [x₀,y₀,z₀] and velocity [vx₀,vy₀,vz₀] directly using sliders below.',
+    x0: 10.0, y0: 0.0, z0: 0.0, vx0: 0.0, vz0: 0.0,
+    calcVy0: (n, x0) => -2 * n * x0
+  }
+};
+
+/* =========================================================================
+   3. 1D KALMAN FILTER
+   ========================================================================= */
+class Kalman1D {
+  constructor(initPos, q, r) {
+    this.x = initPos;
+    this.v = 0;
+    this.P = [[40, 0], [0, 40]];
+    this.Q = q;
+    this.R = r;
+  }
+  reset(initPos) {
+    this.x = initPos;
+    this.v = 0;
+    this.P = [[40, 0], [0, 40]];
+  }
+  predict(dt) {
+    this.x += this.v * dt;
+    const P = this.P, Q = this.Q;
+    const p00 = P[0][0] + dt * (P[1][0] + P[0][1]) + dt * dt * P[1][1] + Q;
+    const p01 = P[0][1] + dt * P[1][1];
+    const p10 = P[1][0] + dt * P[1][1];
+    const p11 = P[1][1] + Q * 0.5;
+    this.P = [[p00, p01], [p10, p11]];
+  }
+  update(z, rOverride) {
+    const R = rOverride !== undefined ? rOverride : this.R;
+    const P = this.P;
+    const S = P[0][0] + R;
+    const K0 = P[0][0] / S, K1 = P[1][0] / S;
+    const y = z - this.x;
+    this.x += K0 * y;
+    this.v += K1 * y;
+    const p00 = (1 - K0) * P[0][0];
+    const p01 = (1 - K0) * P[0][1];
+    const p10 = P[1][0] - K1 * P[0][0];
+    const p11 = P[1][1] - K1 * P[0][1];
+    this.P = [[p00, p01], [p10, p11]];
+  }
+}
+
+/* =========================================================================
+   4. SIMULATION STATE
+   ========================================================================= */
+const state = {
+  scenario: 'uav-uav',       // uav-uav | uav-ground
+  cwCase: 'case1',
+  running: false,
+  t: 0,
+  simSpeed: 15,
+  n: 0.00113,                 // rad/s (mean motion)
+  cwState0: { x0: 10.0, y0: 0.0, z0: 0.0, vx0: 0.0, vy0: -0.0226, vz0: 0.0 },
+  currentCW: { x: 10.0, y: 0.0, z: 0.0, vx: 0.0, vy: -0.0226, vz: 0.0 },
+  frames: 0,
+  lockFrames: 0,
+  consecHits: 0,
+  consecMisses: 0,
+  status: 'ACQUIRING',
+  acquisitionTime: null,
+  boresightYaw: 0,
+  boresightPitch: 0,
+  vibYaw: 0, vibPitch: 0,
+  searchPhase: 0,
+  lastErrPx: null,
+  fps: 0,
+  params: {
+    wind: 25, vib: 20, turb: 20, cloud: 10, obs: 10, sun: 15, noise: 20, dark: 15
+  },
+  obstruction: { active: false, until: 0 },
+  kx: new Kalman1D(IMG_W / 2, 4, 30),
+  ky: new Kalman1D(IMG_H / 2, 4, 30),
+  log: [],
+  lastLogT: 0
+};
+
+function applyPreset(caseKey) {
+  state.cwCase = caseKey;
+  const p = cwPresets[caseKey];
+  if (!p) return;
+  state.cwState0.x0 = p.x0;
+  state.cwState0.y0 = p.y0;
+  state.cwState0.z0 = p.z0;
+  state.cwState0.vx0 = p.vx0;
+  state.cwState0.vz0 = p.vz0;
+  state.cwState0.vy0 = p.calcVy0 ? p.calcVy0(state.n, p.x0) : p.vy0;
+  updateSliderInputsUI();
+}
+
+function updateSliderInputsUI() {
+  document.getElementById('sN').value = state.n;
+  document.getElementById('vN').textContent = state.n.toFixed(5) + ' rad/s';
+
+  document.getElementById('sX0').value = state.cwState0.x0;
+  document.getElementById('vX0').textContent = state.cwState0.x0.toFixed(1) + ' m';
+
+  document.getElementById('sY0').value = state.cwState0.y0;
+  document.getElementById('vY0').textContent = state.cwState0.y0.toFixed(1) + ' m';
+
+  document.getElementById('sZ0').value = state.cwState0.z0;
+  document.getElementById('vZ0').textContent = state.cwState0.z0.toFixed(1) + ' m';
+
+  document.getElementById('sVx0').value = state.cwState0.vx0;
+  document.getElementById('vVx0').textContent = state.cwState0.vx0.toFixed(3) + ' m/s';
+
+  document.getElementById('sVy0').value = state.cwState0.vy0;
+  document.getElementById('vVy0').textContent = state.cwState0.vy0.toFixed(4) + ' m/s';
+
+  document.getElementById('sVz0').value = state.cwState0.vz0;
+  document.getElementById('vVz0').textContent = state.cwState0.vz0.toFixed(3) + ' m/s';
+
+  const period = (2 * Math.PI) / state.n;
+  document.getElementById('periodReadout').textContent = `T = ${period.toFixed(0)}s (${(period/60).toFixed(1)} min)`;
+}
+
+function resetState() {
+  state.t = 0; state.frames = 0; state.lockFrames = 0;
+  state.consecHits = 0; state.consecMisses = 0;
+  state.status = 'ACQUIRING'; state.acquisitionTime = null;
+  state.boresightYaw = 0; state.boresightPitch = 0;
+  state.vibYaw = 0; state.vibPitch = 0; state.searchPhase = 0;
+  state.lastErrPx = null;
+  state.obstruction = { active: false, until: 0 };
+  state.kx.reset(IMG_W / 2);
+  state.ky.reset(IMG_H / 2);
+  state.log = []; state.lastLogT = 0;
+  updateLockBadge();
+  updateStatsDisplay();
+}
+
+/* =========================================================================
+   5. THREE.JS 3D SCENE SETUP & TRAJECTORY MAPPING
+   ========================================================================= */
+const canvas3d = document.getElementById('obs3d');
+let renderer = null, scene = null, camera3d = null;
+let selfMesh = null, targetMesh = null, groundMesh = null;
+let boreLine = null, losLine = null, orbitLine = null, originMarker = null;
+
+const orbitControls = { radius: 32, theta: 0.85, phi: 1.15, target: new THREE.Vector3(0, 0, 0) };
+
+/**
+ * Coordinate Frame Mapping:
+ * LVLH CW Frame  --> Three.js World Space
+ * CW x (Radial)  --> World X
+ * CW z (Cross-t) --> World Y (Vertical Height)
+ * CW y (Along-t) --> World Z (Depth)
+ */
+function cwToWorld(cwPos) {
+  return new THREE.Vector3(cwPos.x, cwPos.z, cwPos.y);
+}
+
+function init3D() {
+  if (typeof THREE === 'undefined') return;
+  renderer = new THREE.WebGLRenderer({ canvas: canvas3d, antialias: true, alpha: false });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x040610);
+  scene.fog = new THREE.FogExp2(0x040610, 0.008);
+
+  camera3d = new THREE.PerspectiveCamera(45, 4/3, 0.1, 3000);
+  applyOrbit();
+
+  // Lights
+  scene.add(new THREE.AmbientLight(0x2a3a55, 1.2));
+  const sunLight = new THREE.DirectionalLight(0xfff1d8, 1.3);
+  sunLight.position.set(40, 50, 20);
+  scene.add(sunLight);
+
+  // Ground Grid
+  const grid = new THREE.GridHelper(120, 60, 0x1c3a4a, 0x0f1f2a);
+  grid.position.y = -0.05;
+  scene.add(grid);
+
+  // Stars
+  const starGeo = new THREE.BufferGeometry();
+  const N = 400, pos = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) {
+    pos[i*3]   = (Math.random() - 0.5) * 300;
+    pos[i*3+1] = Math.random() * 120 + 2;
+    pos[i*3+2] = (Math.random() - 0.5) * 300;
+  }
+  starGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0x3a6073, size: 0.7, transparent: true, opacity: 0.6 })));
+
+  // Chief / Observer Spacecraft Mesh
+  const chiefGroup = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x0e1622, roughness: 0.5, metalness: 0.4 });
+  const accentMat = new THREE.MeshStandardMaterial({ color: 0x4fd8ff, emissive: 0x4fd8ff, emissiveIntensity: 0.6 });
+  chiefGroup.add(new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.3, 1.0), bodyMat));
+  const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.18, 14, 14), accentMat);
+  beacon.position.y = -0.25;
+  chiefGroup.add(beacon);
+  selfMesh = chiefGroup;
+  scene.add(selfMesh);
+
+  // Target Deputy Spacecraft Mesh
+  const deputyGroup = new THREE.Group();
+  const depMat = new THREE.MeshStandardMaterial({ color: 0xff5c7a, emissive: 0xff5c7a, emissiveIntensity: 0.8 });
+  deputyGroup.add(new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 16), depMat));
+  targetMesh = deputyGroup;
+  scene.add(targetMesh);
+
+  // Initial Condition Marker
+  originMarker = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.35, 0),
+    new THREE.MeshBasicMaterial({ color: 0xf4c430, wireframe: true })
+  );
+  scene.add(originMarker);
+
+  // Boresight Line
+  const boreGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+  boreLine = new THREE.Line(boreGeo, new THREE.LineBasicMaterial({ color: 0x34e0a1, transparent: true, opacity: 0.85 }));
+  scene.add(boreLine);
+
+  // Line of Sight Vector
+  const losGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+  losLine = new THREE.Line(losGeo, new THREE.LineDashedMaterial({ color: 0xf4c430, dashSize: 0.4, gapSize: 0.3, transparent: true, opacity: 0.6 }));
+  scene.add(losLine);
+
+  // Analytical CW Orbit Curve Line
+  const orbitGeo = new THREE.BufferGeometry();
+  orbitLine = new THREE.Line(orbitGeo, new THREE.LineBasicMaterial({ color: 0x4fd8ff, transparent: true, opacity: 0.7 }));
+  scene.add(orbitLine);
+
+  updateCWTrajectoryCurve();
+  resize3d();
+}
+
+function updateCWTrajectoryCurve() {
+  if (!orbitLine) return;
+  const points = [];
+  const period = (2 * Math.PI) / state.n;
+  const isDrift = state.cwCase === 'case3';
+  const steps = 150;
+  const duration = isDrift ? period * 1.5 : period;
+
+  for (let i = 0; i <= steps; i++) {
+    const t_sample = (i / steps) * duration;
+    const cw_p = propagateCW(state.cwState0, t_sample, state.n);
+    points.push(cwToWorld(cw_p));
+  }
+  orbitLine.geometry.setFromPoints(points);
+
+  // Update initial condition marker position
+  const p0 = cwToWorld(propagateCW(state.cwState0, 0, state.n));
+  if (originMarker) originMarker.position.copy(p0);
+}
+
+function applyOrbit() {
+  if (!camera3d) return;
+  camera3d.position.set(
+    orbitControls.target.x + orbitControls.radius * Math.sin(orbitControls.phi) * Math.sin(orbitControls.theta),
+    orbitControls.target.y + orbitControls.radius * Math.cos(orbitControls.phi),
+    orbitControls.target.z + orbitControls.radius * Math.sin(orbitControls.phi) * Math.cos(orbitControls.theta)
+  );
+  camera3d.lookAt(orbitControls.target);
+}
+
+function resize3d() {
+  if (!renderer || !camera3d) return;
+  const parent = canvas3d.parentElement;
+  const w = parent ? parent.clientWidth || 640 : 640;
+  const h = parent ? parent.clientHeight || 480 : 480;
+  renderer.setSize(w, h, false);
+  camera3d.aspect = w / Math.max(h, 1);
+  camera3d.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize3d);
+
+// Pointer Orbit Interactions
+let dragging = false, dragBtn = 0, lastX = 0, lastY = 0;
+canvas3d.addEventListener('contextmenu', e => e.preventDefault());
+canvas3d.addEventListener('pointerdown', e => {
+  dragging = true; dragBtn = e.button; lastX = e.clientX; lastY = e.clientY;
+  canvas3d.setPointerCapture(e.pointerId);
+});
+canvas3d.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  const dx = e.clientX - lastX, dy = e.clientY - lastY;
+  lastX = e.clientX; lastY = e.clientY;
+  if (dragBtn === 2) {
+    const right = new THREE.Vector3(Math.cos(orbitControls.theta), 0, -Math.sin(orbitControls.theta));
+    orbitControls.target.addScaledVector(right, -dx * 0.03);
+    orbitControls.target.y += dy * 0.03;
+  } else {
+    orbitControls.theta -= dx * 0.006;
+    orbitControls.phi = clamp(orbitControls.phi - dy * 0.006, 0.2, Math.PI - 0.2);
+  }
+  applyOrbit();
+});
+window.addEventListener('pointerup', () => { dragging = false; });
+canvas3d.addEventListener('wheel', e => {
+  e.preventDefault();
+  orbitControls.radius = clamp(orbitControls.radius * (1 + e.deltaY * 0.001), 6, 150);
+  applyOrbit();
+}, { passive: false });
+
+/* =========================================================================
+   6. TRACKING CAMERA CANVAS (DETECTOR FEED + CENTROID DETECTOR)
+   ========================================================================= */
+const trackCanvas = document.getElementById('trackCanvas');
+const tctx = trackCanvas.getContext('2d', { willReadFrequently: true });
+
+function renderTrackingCamera(visible, px, py, intensity, p) {
+  const noiseNorm = p.noise / 100;
+  const darkNorm = p.dark / 100;
+  const sunNorm = p.sun / 100;
+  const cloudNorm = p.cloud / 100;
+
+  // Background
+  tctx.fillStyle = '#030611';
+  tctx.fillRect(0, 0, IMG_W, IMG_H);
+
+  // Sunlight glare artifact
+  if (sunNorm > 0.05) {
+    const glareX = IMG_W * 0.85 + Math.sin(state.t * 0.4) * 40;
+    const glareY = IMG_H * 0.15 + Math.cos(state.t * 0.3) * 30;
+    const sunGrad = tctx.createRadialGradient(glareX, glareY, 10, glareX, glareY, 180 * sunNorm + 40);
+    sunGrad.addColorStop(0, 'rgba(255, 245, 210, ' + (0.6 * sunNorm) + ')');
+    sunGrad.addColorStop(0.5, 'rgba(255, 200, 100, ' + (0.25 * sunNorm) + ')');
+    sunGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    tctx.fillStyle = sunGrad;
+    tctx.fillRect(0, 0, IMG_W, IMG_H);
+  }
+
+  // Cloud/fog attenuation band
+  if (cloudNorm > 0.05 || state.obstruction.active) {
+    const cloudOpacity = Math.max(cloudNorm * 0.65, state.obstruction.active ? 0.75 : 0);
+    const bandY = (Math.sin(state.t * 1.1) * 0.5 + 0.5) * IMG_H;
+    const grad = tctx.createLinearGradient(0, bandY - 80, 0, bandY + 80);
+    grad.addColorStop(0, 'rgba(50, 60, 75, 0)');
+    grad.addColorStop(0.5, 'rgba(50, 60, 75, ' + cloudOpacity + ')');
+    grad.addColorStop(1, 'rgba(50, 60, 75, 0)');
+    tctx.fillStyle = grad;
+    tctx.fillRect(0, bandY - 80, IMG_W, 160);
+  }
+
+  // Reticle
+  tctx.strokeStyle = 'rgba(79, 216, 255, 0.2)';
+  tctx.setLineDash([6, 6]);
+  tctx.strokeRect(12, 12, IMG_W - 24, IMG_H - 24);
+  tctx.setLineDash([]);
+
+  // Beacon Glow
+  if (visible && !state.obstruction.active) {
+    const effIntensity = intensity * (1.0 - cloudNorm * 0.65);
+    if (effIntensity > 0.05) {
+      const radius = 18 * effIntensity + 5;
+      const glow = tctx.createRadialGradient(px, py, 0, px, py, radius);
+      glow.addColorStop(0, 'rgba(255, 255, 255, ' + (0.95 * effIntensity) + ')');
+      glow.addColorStop(0.35, 'rgba(160, 255, 215, ' + (0.75 * effIntensity) + ')');
+      glow.addColorStop(1, 'rgba(52, 224, 161, 0)');
+      tctx.fillStyle = glow;
+      tctx.beginPath(); tctx.arc(px, py, radius, 0, Math.PI * 2); tctx.fill();
+    }
+  }
+
+  // Sensor noise + dark current
+  const imgData = tctx.getImageData(0, 0, IMG_W, IMG_H);
+  const d = imgData.data;
+  const noiseAmp = noiseNorm * 75;
+  const darkAmp = darkNorm * 45;
+  let sumX = 0, sumY = 0, sumW = 0;
+
+  for (let yy = 0; yy < IMG_H; yy += 2) {
+    const rowBase = yy * IMG_W;
+    for (let xx = 0; xx < IMG_W; xx += 2) {
+      const idx = (rowBase + xx) * 4;
+      if (noiseAmp > 0 || darkAmp > 0) {
+        const n = (Math.random() - 0.5) * noiseAmp + (Math.random() < 0.002 ? darkAmp * 3 : 0);
+        d[idx] = clamp(d[idx] + n, 0, 255);
+        d[idx+1] = clamp(d[idx+1] + n, 0, 255);
+        d[idx+2] = clamp(d[idx+2] + n, 0, 255);
+      }
+      const b = 0.299 * d[idx] + 0.587 * d[idx+1] + 0.114 * d[idx+2];
+      if (b > DETECT_THRESHOLD) {
+        sumX += xx * b; sumY += yy * b; sumW += b;
+      }
+    }
+  }
+  tctx.putImageData(imgData, 0, 0);
+
+  // Centroid Calculation
+  let hit = false, mx = 0, my = 0;
+  if (sumW > 3500) {
+    mx = sumX / sumW; my = sumY / sumW;
+    if (Math.random() > noiseNorm * 0.22) hit = true;
+  }
+
+  // Optical Axis Boresight Crosshair
+  tctx.strokeStyle = '#ff5c7a';
+  tctx.lineWidth = 1.5;
+  tctx.beginPath();
+  tctx.moveTo(IMG_W/2 - 12, IMG_H/2); tctx.lineTo(IMG_W/2 + 12, IMG_H/2);
+  tctx.moveTo(IMG_W/2, IMG_H/2 - 12); tctx.lineTo(IMG_W/2, IMG_H/2 + 12);
+  tctx.stroke();
+  tctx.beginPath(); tctx.arc(IMG_W/2, IMG_H/2, 18, 0, Math.PI * 2);
+  tctx.strokeStyle = 'rgba(255, 92, 122, 0.45)'; tctx.stroke();
+
+  // OpenCV Measurement Overlay
+  if (hit) {
+    tctx.fillStyle = '#34e0a1';
+    tctx.beginPath(); tctx.arc(mx, my, 5, 0, Math.PI * 2); tctx.fill();
+    tctx.strokeStyle = 'rgba(52, 224, 161, 0.6)';
+    tctx.beginPath(); tctx.arc(mx, my, 12, 0, Math.PI * 2); tctx.stroke();
+  }
+
+  // Kalman Filter Overlay
+  tctx.fillStyle = '#f4c430';
+  tctx.beginPath(); tctx.arc(state.kx.x, state.ky.x, 4, 0, Math.PI * 2); tctx.fill();
+  tctx.strokeStyle = 'rgba(244, 196, 48, 0.6)';
+  tctx.beginPath(); tctx.arc(state.kx.x, state.ky.x, 11, 0, Math.PI * 2); tctx.stroke();
+
+  return { hit, x: mx, y: my };
+}
+
+/* =========================================================================
+   7. MAIN SIMULATION STEP (ORBITAL CW PROPAGATION + TRACKING PIPELINE)
+   ========================================================================= */
+function stepSimulation(dt) {
+  const p = state.params;
+  const vNorm = p.vib / 100, turbNorm = p.turb / 100, noiseNorm = p.noise / 100;
+  const wNorm = p.wind / 100;
+
+  // Advance simulation clock with speedup multiplier
+  const effectiveDt = dt * state.simSpeed;
+  state.t += effectiveDt;
+
+  // STEP A: DETERMINISTIC CLOHESSY-WILTSHIRE ORBITAL DYNAMICS
+  const cw_ideal = propagateCW(state.cwState0, state.t, state.n);
+  state.currentCW = cw_ideal;
+
+  // Map CW state to 3D world positions depending on operational scenario
+  let selfPos = new THREE.Vector3(0, 0, 0);
+  let targetPos = new THREE.Vector3(0, 0, 0);
+
+  if (state.scenario === 'uav-uav') {
+    // Chief UAV at origin, Deputy target UAV follows CW relative orbit
+    selfPos.set(0, 0, 0);
+    targetPos = cwToWorld(cw_ideal);
+  } else {
+    // UAV -> Ground: Ground station at origin [0,0,0], Airborne UAV follows CW orbit path
+    selfPos = cwToWorld(cw_ideal);
+    targetPos.set(0, 0, 0);
+  }
+
+  // STEP B: DISTURBANCES perturbation layered on top (Wind gust & Vibration Jitter)
+  // Wind gust deflection
+  const windGustX = wNorm * 0.4 * Math.sin(state.t * 0.5);
+  const windGustZ = wNorm * 0.4 * Math.cos(state.t * 0.7);
+  selfPos.x += windGustX; selfPos.z += windGustZ;
+
+  // Mechanical vibration jitter
+  state.vibYaw = state.vibYaw * 0.82 + (Math.random() - 0.5) * vNorm * 0.018;
+  state.vibPitch = state.vibPitch * 0.82 + (Math.random() - 0.5) * vNorm * 0.018;
+
+  // STEP C: TRUE LINE-OF-SIGHT (LOS) VECTOR & ANGLES
+  const rel = targetPos.clone().sub(selfPos);
+  const horiz = Math.sqrt(rel.x*rel.x + rel.z*rel.z);
+  const trueYaw = Math.atan2(rel.x, rel.z);
+  const truePitch = Math.atan2(rel.y, horiz);
+  const range = rel.length();
+
+  // STEP D: ATMOSPHERIC TURBULENCE (Apparent LOS Phase Wander)
+  const turbYaw = (Math.sin(state.t * 3.1) * 0.5 + (Math.random() - 0.5)) * turbNorm * 0.01;
+  const turbPitch = (Math.cos(state.t * 2.7) * 0.5 + (Math.random() - 0.5)) * turbNorm * 0.01;
+  const apparentYaw = trueYaw + turbYaw;
+  const apparentPitch = truePitch + turbPitch;
+
+  // STEP E: OBSTRUCTION EVENTS
+  if (state.obstruction.active) {
+    if (state.t > state.obstruction.until) state.obstruction.active = false;
+  } else {
+    const chancePerSec = (p.obs / 100) * 0.3;
+    if (Math.random() < chancePerSec * dt) {
+      state.obstruction.active = true;
+      state.obstruction.until = state.t + (0.5 + Math.random() * 1.2);
+    }
+  }
+
+  // STEP F: VIRTUAL CAMERA PROJECTION
+  const errYaw = wrapAngle(apparentYaw - state.boresightYaw);
+  const errPitch = apparentPitch - state.boresightPitch;
+  const withinFov = Math.abs(errYaw) < HALF_FOV_X * 1.05 && Math.abs(errPitch) < HALF_FOV_Y * 1.05;
+
+  const pxX = IMG_W / 2 + (errYaw / HALF_FOV_X) * (IMG_W / 2);
+  const pxY = IMG_H / 2 - (errPitch / HALF_FOV_Y) * (IMG_H / 2);
+
+  const beaconVisible = withinFov && !state.obstruction.active && range < 300;
+  const intensity = clamp(1.2 - range / 80, 0.25, 1.0) * (0.8 + 0.2 * Math.sin(state.t * 6.0));
+
+  // STEP G: DETECTOR FRAME RENDER & CENTROID DETECTION
+  const detection = renderTrackingCamera(beaconVisible, pxX, pxY, intensity, p);
+
+  // STEP H: KALMAN FILTER STEP
+  const R = 15 + noiseNorm * 220;
+  state.kx.predict(dt); state.ky.predict(dt);
+  if (detection.hit) {
+    state.kx.update(detection.x, R);
+    state.ky.update(detection.y, R);
+  }
+
+  // STEP I: LOCK STATE MACHINE
+  if (detection.hit) {
+    state.consecHits++; state.consecMisses = 0;
+  } else {
+    state.consecMisses++; state.consecHits = 0;
+  }
+
+  if (state.status !== 'TRACKING' && state.consecHits >= LOCK_HITS_NEEDED) {
+    state.status = 'TRACKING';
+    if (state.acquisitionTime === null) state.acquisitionTime = state.t;
+  } else if (state.status === 'TRACKING' && state.consecMisses >= LOST_MISSES_NEEDED) {
+    state.status = 'LOST';
+  } else if (state.status === 'LOST' && state.consecHits >= LOCK_HITS_NEEDED) {
+    state.status = 'TRACKING';
+  }
+  if (state.status === 'TRACKING') state.lockFrames++;
+
+  // STEP J: PAN-TILT GIMBAL PID BORESIGHT CONTROLLER
+  if (state.status === 'LOST' || (state.status === 'ACQUIRING' && state.consecMisses > LOST_MISSES_NEEDED)) {
+    // Spiral search pattern when target is lost
+    state.searchPhase += dt * 0.9;
+    const sweepYaw = Math.sin(state.searchPhase) * HALF_FOV_X * 2.0;
+    const sweepPitch = Math.sin(state.searchPhase * 0.6) * HALF_FOV_Y * 1.5;
+    state.boresightYaw = wrapAngle(state.boresightYaw + sweepYaw * dt * 0.5);
+    state.boresightPitch += sweepPitch * dt * 0.5;
+  } else {
+    // Closed-loop tracking towards Kalman state estimate
+    const estErrYaw = ((state.kx.x - IMG_W/2) / (IMG_W/2)) * HALF_FOV_X;
+    const estErrPitch = -((state.ky.x - IMG_H/2) / (IMG_H/2)) * HALF_FOV_Y;
+    const corrYaw = clamp(CTRL_GAIN * estErrYaw, -MAX_SLEW, MAX_SLEW) * dt;
+    const corrPitch = clamp(CTRL_GAIN * estErrPitch, -MAX_SLEW, MAX_SLEW) * dt;
+    state.boresightYaw = wrapAngle(state.boresightYaw + corrYaw);
+    state.boresightPitch += corrPitch;
+  }
+
+  // Inject mechanical vibration into camera attitude
+  state.boresightYaw = wrapAngle(state.boresightYaw + state.vibYaw * dt * 5);
+  state.boresightPitch += state.vibPitch * dt * 5;
+  state.boresightPitch = clamp(state.boresightPitch, -1.35, 1.35);
+
+  // STEP K: ERROR METRICS & TELEMETRY
+  const kErrPxX = state.kx.x - IMG_W / 2, kErrPxY = state.ky.x - IMG_H / 2;
+  const errPx = Math.sqrt(kErrPxX * kErrPxX + kErrPxY * kErrPxY);
+  state.lastErrPx = detection.hit ? errPx : state.lastErrPx;
+
+  state.frames++;
+
+  // Log telemetry row every 0.5s
+  if (state.t - state.lastLogT > 0.5) {
+    state.lastLogT = state.t;
+    state.log.push({
+      t: state.t.toFixed(2),
+      status: state.status,
+      cwCase: state.cwCase,
+      cw_x: cw_ideal.x.toFixed(2),
+      cw_y: cw_ideal.y.toFixed(2),
+      cw_z: cw_ideal.z.toFixed(2),
+      errPx: state.lastErrPx !== null ? state.lastErrPx.toFixed(2) : '',
+      range: range.toFixed(2),
+      fps: state.fps.toFixed(1)
+    });
+  }
+
+  // STEP L: THREE.JS SCENE MESH UPDATES
+  if (scene) {
+    selfMesh.position.copy(selfPos);
+    targetMesh.position.copy(targetPos);
+
+    const boreDir = new THREE.Vector3(
+      Math.sin(state.boresightYaw) * Math.cos(state.boresightPitch),
+      Math.sin(state.boresightPitch),
+      Math.cos(state.boresightYaw) * Math.cos(state.boresightPitch)
+    );
+    selfMesh.lookAt(selfPos.clone().add(boreDir));
+
+    const boreEnd = selfPos.clone().addScaledVector(boreDir, Math.max(range, 5));
+    boreLine.geometry.setFromPoints([selfPos, boreEnd]);
+    boreLine.material.color.set(state.status === 'TRACKING' ? 0x34e0a1 : (state.status === 'LOST' ? 0xff5c7a : 0x4fd8ff));
+
+    losLine.geometry.setFromPoints([selfPos, targetPos]);
+    losLine.computeLineDistances();
+  }
+
+  updateLockBadge();
+  updateDiagnosticsUI();
+}
+
+/* =========================================================================
+   8. DIAGNOSTICS & STATS UI UPDATES
+   ========================================================================= */
+function updateDiagnosticsUI() {
+  const cw = state.currentCW;
+  const range = Math.sqrt(cw.x*cw.x + cw.y*cw.y + cw.z*cw.z);
+  const phaseRad = (state.n * state.t) % (2 * Math.PI);
+  const phaseDeg = (phaseRad * 180 / Math.PI).toFixed(1);
+
+  const preset = cwPresets[state.cwCase];
+  document.getElementById('dCase').textContent = preset ? preset.name : state.cwCase;
+
+  // Bounded condition check: vy0 == -2 * n * x0
+  const isBounded = Math.abs(state.cwState0.vy0 - (-2 * state.n * state.cwState0.x0)) < 1e-4;
+  const bEl = document.getElementById('dBounded');
+  bEl.textContent = isBounded ? 'Satisfied (Zero Drift)' : 'Violated (Secular Drift)';
+  bEl.style.color = isBounded ? 'var(--green)' : 'var(--amber)';
+
+  document.getElementById('dPos').textContent = `x:${cw.x.toFixed(1)}m, y:${cw.y.toFixed(1)}m, z:${cw.z.toFixed(1)}m`;
+  document.getElementById('dVel').textContent = `vx:${cw.vx.toFixed(3)}, vy:${cw.vy.toFixed(3)}, vz:${cw.vz.toFixed(3)}`;
+  document.getElementById('dRange').textContent = `${range.toFixed(2)} m`;
+  document.getElementById('dPhase').textContent = `${phaseDeg}° (${phaseRad.toFixed(2)} rad)`;
+  document.getElementById('dMeanMotion').textContent = `${state.n.toFixed(6)} rad/s`;
+
+  const period = (2 * Math.PI) / state.n;
+  document.getElementById('dPeriod').textContent = `${period.toFixed(0)} s (${(period/60).toFixed(1)} min)`;
+}
+
+const lockBadge = document.getElementById('lockBadge');
+function updateLockBadge() {
+  lockBadge.className = 'badge ' + (state.status === 'TRACKING' ? 'tracking' : (state.status === 'LOST' ? 'lost' : 'acquiring'));
+  lockBadge.textContent = state.status;
+}
+
+const elFps = document.getElementById('statFps');
+const elTime = document.getElementById('statTime');
+const elAcq = document.getElementById('statAcq');
+const elErr = document.getElementById('statErr');
+const elLock = document.getElementById('statLock');
+const elFrames = document.getElementById('statFrames');
+
+function updateStatsDisplay() {
+  elFps.textContent = state.fps.toFixed(0);
+  elTime.textContent = state.t.toFixed(1) + 's';
+  elAcq.textContent = state.acquisitionTime !== null ? state.acquisitionTime.toFixed(2) + 's' : '—';
+  if (state.lastErrPx !== null) {
+    const mrad = (state.lastErrPx / (IMG_W / 2)) * HALF_FOV_X * 1000;
+    elErr.textContent = state.lastErrPx.toFixed(1) + 'px / ' + mrad.toFixed(2) + 'mrad';
+  } else {
+    elErr.textContent = '—';
+  }
+  elLock.textContent = state.frames > 0 ? ((state.lockFrames / state.frames) * 100).toFixed(1) + '%' : '0%';
+  elFrames.textContent = state.frames;
+}
+
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
+function setRunUI() {
+  const runBtn = document.getElementById('runBtn');
+  if (state.running) {
+    statusDot.className = 'dot live';
+    statusText.textContent = 'SIMULATING';
+    runBtn.textContent = 'Pause Simulation';
+  } else {
+    statusDot.className = state.frames > 0 ? 'dot paused' : 'dot';
+    statusText.textContent = state.frames > 0 ? 'PAUSED' : 'STANDBY';
+    runBtn.textContent = state.frames > 0 ? 'Resume Simulation' : 'Start Simulation';
+  }
+}
+
+/* =========================================================================
+   9. BINDINGS, ACCORDIONS & UI CONTROLS
+   ========================================================================= */
+window.toggleAccordion = function(id) {
+  const box = document.getElementById(id);
+  if (!box) return;
+  box.classList.toggle('open');
+  const icon = box.querySelector('.toggle-icon');
+  if (icon) icon.textContent = box.classList.contains('open') ? '▼' : '▶';
+};
+
+// Scenario Selector (UAV->UAV / UAV->Ground)
+document.querySelectorAll('#scenarioGroup .opt-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#scenarioGroup .opt-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.scenario = btn.dataset.scenario;
+    document.getElementById('obsTitle').textContent = 'Relative 3D Orbital Trajectory (' + btn.textContent + ')';
+    resetState();
+    stepSimulation(0);
+  });
+});
+
+// Clohessy-Wiltshire Case Selector
+document.querySelectorAll('#cwCaseGroup .opt-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#cwCaseGroup .opt-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const caseKey = btn.dataset.cwcase;
+    applyPreset(caseKey);
+    const p = cwPresets[caseKey];
+    document.getElementById('cwCaseDesc').innerHTML = p ? p.desc : '';
+    document.getElementById('cwBadge').textContent = 'CW CASE: ' + (p ? p.name.toUpperCase() : caseKey.toUpperCase());
+    updateCWTrajectoryCurve();
+    resetState();
+    stepSimulation(0);
+  });
+});
+
+// CW Parameter Sliders
+const cwSliderMap = [
+  ['sN', 'vN', (v) => { state.n = parseFloat(v); if (state.cwCase !== 'custom') applyPreset(state.cwCase); updateCWTrajectoryCurve(); return state.n.toFixed(5) + ' rad/s'; }],
+  ['sSimSpeed', 'vSimSpeed', (v) => { state.simSpeed = parseFloat(v); return v + 'x'; }],
+  ['sX0', 'vX0', (v) => { state.cwState0.x0 = parseFloat(v); if (state.cwCase !== 'custom') applyPreset(state.cwCase); updateCWTrajectoryCurve(); return parseFloat(v).toFixed(1) + ' m'; }],
+  ['sY0', 'vY0', (v) => { state.cwState0.y0 = parseFloat(v); updateCWTrajectoryCurve(); return parseFloat(v).toFixed(1) + ' m'; }],
+  ['sZ0', 'vZ0', (v) => { state.cwState0.z0 = parseFloat(v); updateCWTrajectoryCurve(); return parseFloat(v).toFixed(1) + ' m'; }],
+  ['sVx0', 'vVx0', (v) => { state.cwState0.vx0 = parseFloat(v); updateCWTrajectoryCurve(); return parseFloat(v).toFixed(3) + ' m/s'; }],
+  ['sVy0', 'vVy0', (v) => { state.cwState0.vy0 = parseFloat(v); updateCWTrajectoryCurve(); return parseFloat(v).toFixed(4) + ' m/s'; }],
+  ['sVz0', 'vVz0', (v) => { state.cwState0.vz0 = parseFloat(v); updateCWTrajectoryCurve(); return parseFloat(v).toFixed(3) + ' m/s'; }]
+];
+
+cwSliderMap.forEach(([sId, lId, handler]) => {
+  const el = document.getElementById(sId);
+  const lab = document.getElementById(lId);
+  if (el && lab) {
+    el.addEventListener('input', () => {
+      lab.textContent = handler(el.value);
+    });
+  }
+});
+
+// Disturbances Sliders
+const distSliders = [
+  ['sWind', 'vWind', 'wind', ' m/s'],
+  ['sVib', 'vVib', 'vib', ' mrad'],
+  ['sTurb', 'vTurb', 'turb', '%'],
+  ['sCloud', 'vCloud', 'cloud', '%'],
+  ['sObs', 'vObs', 'obs', '%'],
+  ['sSun', 'vSun', 'sun', '%'],
+  ['sNoise', 'vNoise', 'noise', '%'],
+  ['sDark', 'vDark', 'dark', '%']
+];
+distSliders.forEach(([sId, lId, key, suffix]) => {
+  const el = document.getElementById(sId);
+  const lab = document.getElementById(lId);
+  if (el && lab) {
+    el.addEventListener('input', () => {
+      state.params[key] = Number(el.value);
+      lab.textContent = el.value + suffix;
+    });
+  }
+});
+
+document.getElementById('runBtn').addEventListener('click', () => {
+  state.running = !state.running;
+  setRunUI();
+});
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  state.running = false;
+  resetState();
+  stepSimulation(0);
+  setRunUI();
+});
+
+document.getElementById('logBtn').addEventListener('click', () => {
+  const rows = ['t_s,status,cw_case,cw_x_m,cw_y_m,cw_z_m,error_px,range_m,fps'];
+  state.log.forEach(r => rows.push([r.t, r.status, r.cwCase, r.cw_x, r.cw_y, r.cw_z, r.errPx, r.range, r.fps].join(',')));
+  rows.push('');
+  rows.push('CLOHESSY-WILTSHIRE SUMMARY METRICS');
+  rows.push('Scenario,' + state.scenario);
+  rows.push('CW_Case,' + state.cwCase);
+  rows.push('Mean_Motion_n_rad_s,' + state.n);
+  rows.push('Initial_State_x0_y0_z0_m,' + [state.cwState0.x0, state.cwState0.y0, state.cwState0.z0].join(';'));
+  rows.push('Total_Frames,' + state.frames);
+  rows.push('Lock_Retention_Pct,' + (state.frames > 0 ? ((state.lockFrames / state.frames) * 100).toFixed(2) : '0'));
+  rows.push('Acquisition_Time_s,' + (state.acquisitionTime !== null ? state.acquisitionTime.toFixed(2) : 'n/a'));
+
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'fsoc_cw_' + state.cwCase + '_performance_log.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
+/* =========================================================================
+   10. ANIMATION & RENDER LOOP
+   ========================================================================= */
+let prevFrameTime = performance.now();
+let fpsAcc = 0, fpsTimer = 0;
+
+function frame(now) {
+  const dt = Math.min((now - prevFrameTime) / 1000, 0.05);
+  prevFrameTime = now;
+
+  fpsAcc += 1; fpsTimer += dt;
+  if (fpsTimer >= 0.5) {
+    state.fps = fpsAcc / fpsTimer;
+    fpsAcc = 0; fpsTimer = 0;
+  }
+
+  if (state.running) {
+    stepSimulation(dt);
+    updateStatsDisplay();
+  }
+
+  if (renderer && scene && camera3d) {
+    applyOrbit();
+    renderer.render(scene, camera3d);
+  }
+
+  requestAnimationFrame(frame);
+}
+
+// Initial setup
+init3D();
+applyPreset('case1');
+resetState();
+stepSimulation(0.01);
+setRunUI();
+
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
